@@ -19,7 +19,7 @@ public:
     uint8_t* getBuffer();
     void clear();
 
-//private:
+private:
     const size_t _numLEDs;
     DMA_Channel_TypeDef* _DMAChannel = DMA1_Channel3;
     SPI_TypeDef* _SPI = SPI1;
