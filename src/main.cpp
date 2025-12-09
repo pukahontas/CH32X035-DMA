@@ -20,8 +20,6 @@ void setup() {
     USBSerial.println("Starting up...");
 #endif
 
-    LED_SPI.init(); // Initialize for 300 LEDs
-
     LED_SPI.setLED(0, 255, 0, 0); // Set first LED to red
     LED_SPI.setLED(1, 0, 255, 0); // Set second LED to green
     LED_SPI.setLED(2, 0, 0, 255); // Set third LED to blue
@@ -30,7 +28,7 @@ void setup() {
 
 void loop() {
     delay(100);
-    LED_SPI.begin();
+    LED_SPI.send();
 
 #ifdef SERIAL_ENABLE
     printAddr(&SPI1->CTLR1, "CTLR1", BIN);

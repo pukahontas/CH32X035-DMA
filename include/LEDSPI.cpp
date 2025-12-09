@@ -1,23 +1,53 @@
 #include "LEDSPI.h"
 
-uint16_t WS2812BitPattern(uint8_t nibble)
+/**
+ * @brief Compile-time helper to convert a 4-bit nibble to WS2812 SPI bit pattern.
+ *
+ * @param nibble 4-bit value (0..15).
+ * @return 12-bit SPI pattern encoding the nibble as WS2812 bits.
+ */
+constexpr uint16_t _computeWS2812Pattern(uint8_t nibble)
 {
-    nibble &= 0x0F; // Ensure only lower 4 bits are used
     uint16_t bits = 0;
-    for (uint8_t bit = 0b1000; bit; bit >>= 1)
-    {
+    for (uint8_t bit = 0b1000; bit; bit >>= 1) {
         bits <<= BITS_PER_SIGNAL;
         bits |= (nibble & bit) ? SIGNAL_HIGH : SIGNAL_LOW;
     }
     return bits;
 }
 
-LED_SPI_CH32::LED_SPI_CH32(size_t numLEDs) : _numLEDs(numLEDs)
-{
-}
+/**
+ * @brief Compile-time generated lookup table for WS2812 bit patterns.
+ *
+ * Maps 4-bit color nibbles (0..15) to their 12-bit SPI encodings.
+ * Table is computed at compile time using constexpr.
+ */
+constexpr uint16_t WS2812_LUT[16] = {
+    _computeWS2812Pattern(0x0),  _computeWS2812Pattern(0x1),
+    _computeWS2812Pattern(0x2),  _computeWS2812Pattern(0x3),
+    _computeWS2812Pattern(0x4),  _computeWS2812Pattern(0x5),
+    _computeWS2812Pattern(0x6),  _computeWS2812Pattern(0x7),
+    _computeWS2812Pattern(0x8),  _computeWS2812Pattern(0x9),
+    _computeWS2812Pattern(0xA),  _computeWS2812Pattern(0xB),
+    _computeWS2812Pattern(0xC),  _computeWS2812Pattern(0xD),
+    _computeWS2812Pattern(0xE),  _computeWS2812Pattern(0xF),
+};
 
-void LED_SPI_CH32::init()
+LED_SPI_CH32::LED_SPI_CH32(size_t numLEDs) 
+    : _numLEDs(numLEDs),
+      _LEDColorsSize(numLEDs * 3),
+      _DMABufferSize(numLEDs * 3 * BITS_PER_SIGNAL),
+      _LEDColors(nullptr),
+      _DMABuffer(nullptr)
 {
+    // Validate LED count
+    if (_numLEDs > MAX_SUPPORTED_LEDS) {
+        return; // Failed validation; allocations will remain null
+    }
+
+    // Allocate buffers dynamically
+    _LEDColors = new uint8_t[_LEDColorsSize]();    // Zero-initialized
+    _DMABuffer = new uint8_t[_DMABufferSize]();    // Zero-initialized
 
     // Initialize DMA channel3 (SPI peripheral channel) for writing to the SPI transmit buffer
     // Initialize DMASettings here so this helper owns the DMA configuration.
@@ -37,13 +67,13 @@ void LED_SPI_CH32::init()
     DMA_Init(_DMAChannel, &_DMASettings);
 
     // Initialize the SPI peripheral
-    SPI.beginTransaction(SPISettings(4800000, MSBFIRST, SPI_MODE0, SPI_TRANSMITONLY));
+    SPI.beginTransaction(SPISettings(3000000, MSBFIRST, SPI_MODE0, SPI_TRANSMITONLY));
 
     // Set SPI to send DMA request when transmit buffer is empty
     SPI1->CTLR2 |= SPI_CTLR2_TXDMAEN;
 }
 
-void LED_SPI_CH32::begin()
+void LED_SPI_CH32::send()
 {
     // Initialize DMASettings here so this helper owns the DMA configuration.
 
@@ -74,14 +104,17 @@ void LED_SPI_CH32::setLED(uint16_t index, uint8_t r, uint8_t g, uint8_t b)
         uint8_t colorChannel = (i == 0) ? g : (i == 1) ? r
                                                        : b; // WS2812 uses GRB order
 
-        // Lookup the WS2812 bit pattern for the high and low nibbles and combine them
-        uint32_t ws2812BitPattern = WS2812BitPattern((colorChannel >> 4) & 0x0F) << 12 |
-                                    WS2812BitPattern(colorChannel & 0x0F);
+        // Look up the WS2812 bit patterns for the high and low nibbles from the compile-time table
+        uint32_t ws2812BitPattern = 
+            ((uint32_t)WS2812_LUT[(colorChannel >> 4) & 0x0F] << 12) |
+            WS2812_LUT[colorChannel & 0x0F];
 
         // Assign the 24 bits (3 bytes) of the WS2812 bit pattern for each color channel to the DMA buffer
         _DMABuffer[dmaIndex] = (ws2812BitPattern >> 16) & 0xFF;
-        _DMABuffer[dmaIndex++] = (ws2812BitPattern >> 8) & 0xFF;
-        _DMABuffer[dmaIndex++] = ws2812BitPattern & 0xFF;
+        _DMABuffer[dmaIndex + 1] = (ws2812BitPattern >> 8) & 0xFF;
+        _DMABuffer[dmaIndex + 2] = ws2812BitPattern & 0xFF;
+
+        dmaIndex += 3;
     }
 }
 
@@ -91,9 +124,4 @@ void LED_SPI_CH32::clear()
     {
         setLED(i, 0, 0, 0);
     }
-}
-
-uint8_t *LED_SPI_CH32::getBuffer()
-{
-    return _DMABuffer;
 }
