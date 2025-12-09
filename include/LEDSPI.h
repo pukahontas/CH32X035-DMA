@@ -6,9 +6,9 @@
 #include <cstdint>
 
 #define MAX_SUPPORTED_LEDS 300
-#define BITS_PER_SIGNAL 3
-#define SIGNAL_LOW 0b100
-#define SIGNAL_HIGH 0b110
+#define BITS_PER_SIGNAL 8
+#define SIGNAL_LOW 0b11000000
+#define SIGNAL_HIGH 0b11111000
 
 /**
  * @class LED_SPI_CH32
@@ -57,7 +57,7 @@ public:
      */
     void clear();
 
-private:
+//private:
     const size_t _numLEDs;
     const size_t _LEDColorsSize;
     const size_t _DMABufferSize;
