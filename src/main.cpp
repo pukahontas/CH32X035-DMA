@@ -12,7 +12,7 @@ const uint8_t ledPin = PA7;
 #define SIGNAL_LOW 0b100
 #define SIGNAL_HIGH 0b110
 #define BUFFER_SIZE (10 * 3 * BITS_PER_SIGNAL) // 10 LEDs, 3 color channels, 8 bits per channel
-uint8_t _DMABuffer[BUFFER_SIZE] = {0xFF, 0, 1, 0, 3};
+uint8_t _DMABuffer[BUFFER_SIZE] = {0};
 
 //DMA_TIM_Config dmaTimConfig;
 DMA_SPI_Config dmaSpiConfig;
@@ -67,20 +67,8 @@ void setup() {
 
     pinMode(ledPin, OUTPUT);
 
-
-    /*dmaTimConfig.init(DMA1_Channel1, ledPin, dmaBuffer, TIM2, 3, 800000);
-    dmaBuffer[0] = dmaTimConfig.pinSetValue();
-    dmaTimConfig.begin();*/
-
-
     dmaSpiConfig.init((uint8_t*)_DMABuffer, BUFFER_SIZE);
     dmaSpiConfig.begin();
-
-        // Initialize the SPI peripheral
-    SPI.beginTransaction(SPISettings(4800000, MSBFIRST, SPI_MODE0));    
-
-    // Set SPI to send DMA request when transmit buffer is empty
-    SPI1->CTLR2 |= SPI_CTLR2_TXDMAEN;
 
     //LED_SPI.init(10); // Initialize for 300 LEDs
     //DMA1_Channel3->MADDR = (uint32_t)(LED_SPI.getBuffer());

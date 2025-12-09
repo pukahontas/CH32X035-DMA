@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <SPI.h>
 
 class DMA_TIM_Config
 {
@@ -173,7 +174,12 @@ public:
     {
         DMAChannel = DMA1_Channel3;
         configureDMA(DMAChannel, DMABuffer, BufferSize);
-        //configureSPI();
+        // Initialize the SPI peripheral
+        SPI.beginTransaction(SPISettings(4800000, MSBFIRST, SPI_MODE0, SPI_TRANSMITONLY));    
+
+        // Set SPI to send DMA request when transmit buffer is empty
+        SPI1->CTLR2 |= SPI_CTLR2_TXDMAEN;
+
         return *this;
     }
 

@@ -37,21 +37,8 @@ void LED_SPI_CH32::init(uint16_t numLEDs)
     RCC_AHBPeriphClockCmd(RCC_AHBPeriph_DMA1, ENABLE);
 
 
-    SPI_InitTypeDef *SPI_InitStruct = {0};
-    SPI_StructInit(SPI_InitStruct);
-
-    SPI_InitStruct->SPI_Direction = SPI_Direction_1Line_Tx;
-    SPI_InitStruct->SPI_Mode = SPI_Mode_Master;
-    SPI_InitStruct->SPI_DataSize = SPI_DataSize_8b;
-    SPI_InitStruct->SPI_BaudRatePrescaler = SPI_BaudRatePrescaler_2;
-    /*"SPI_FirstBit_LSB" not support SPI slave mode*/
-    SPI_InitStruct->SPI_FirstBit = SPI_FirstBit_MSB;
-
-    SPI_Init(SPI1, SPI_InitStruct);
-    SPI_I2S_DMACmd(SPI1, SPI_I2S_DMAReq_Tx, ENABLE);
-
     // Initialize the SPI peripheral
-    SPI.beginTransaction(SPISettings(800000, MSBFIRST, SPI_MODE0));
+    SPI.beginTransaction(SPISettings(4800000, MSBFIRST, SPI_MODE0, SPI_TRANSMITONLY));    
 
     // Set SPI to send DMA request when transmit buffer is empty
     SPI1->CTLR2 |= SPI_CTLR2_TXDMAEN;
