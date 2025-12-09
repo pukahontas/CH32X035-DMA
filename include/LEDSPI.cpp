@@ -12,17 +12,17 @@ uint16_t WS2812BitPattern(uint8_t nibble)
     return bits;
 }
 
-LED_SPI_CH32::LED_SPI_CH32()
+LED_SPI_CH32::LED_SPI_CH32(size_t numLEDs) : _numLEDs(numLEDs)
 {
 }
 
-void LED_SPI_CH32::init(uint16_t numLEDs)
+void LED_SPI_CH32::init()
 {
-    _numLEDs = numLEDs;
 
     // Initialize DMA channel3 (SPI peripheral channel) for writing to the SPI transmit buffer
-    _DMASettings.DMA_PeripheralBaseAddr = (uint32_t)&(_SPI->DATAR); // SPI transmit buffer address
-    _DMASettings.DMA_MemoryBaseAddr = (uint32_t)(getBuffer());
+    // Initialize DMASettings here so this helper owns the DMA configuration.
+    _DMASettings.DMA_PeripheralBaseAddr = (uint32_t)&(SPI1->DATAR);
+    _DMASettings.DMA_MemoryBaseAddr = (uint32_t)_DMABuffer;
     _DMASettings.DMA_DIR = DMA_DIR_PeripheralDST;
     _DMASettings.DMA_BufferSize = _DMABufferSize;
     _DMASettings.DMA_PeripheralInc = DMA_PeripheralInc_Disable;
@@ -30,15 +30,14 @@ void LED_SPI_CH32::init(uint16_t numLEDs)
     _DMASettings.DMA_PeripheralDataSize = DMA_PeripheralDataSize_Byte;
     _DMASettings.DMA_MemoryDataSize = DMA_MemoryDataSize_Byte;
     _DMASettings.DMA_Mode = DMA_Mode_Normal;
-    _DMASettings.DMA_Priority = DMA_Priority_Low;
+    _DMASettings.DMA_Priority = DMA_Priority_High;
     _DMASettings.DMA_M2M = DMA_M2M_Disable;
-    DMA_Init(_DMAChannel, &_DMASettings);
-        return;
-    RCC_AHBPeriphClockCmd(RCC_AHBPeriph_DMA1, ENABLE);
 
+    RCC_AHBPeriphClockCmd(RCC_AHBPeriph_DMA1, ENABLE);
+    DMA_Init(_DMAChannel, &_DMASettings);
 
     // Initialize the SPI peripheral
-    SPI.beginTransaction(SPISettings(4800000, MSBFIRST, SPI_MODE0, SPI_TRANSMITONLY));    
+    SPI.beginTransaction(SPISettings(4800000, MSBFIRST, SPI_MODE0, SPI_TRANSMITONLY));
 
     // Set SPI to send DMA request when transmit buffer is empty
     SPI1->CTLR2 |= SPI_CTLR2_TXDMAEN;

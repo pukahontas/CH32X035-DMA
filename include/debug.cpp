@@ -1,3 +1,4 @@
+#pragma once
 #include <CH32X035_USBSerial.h>
 using namespace wch::usbcdc;
 
