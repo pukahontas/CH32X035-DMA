@@ -1,46 +1,5 @@
 #include "LEDSPI.h"
 
-/**
- * @brief Compile-time helper to convert a 4-bit nibble to WS2812 SPI bit pattern.
- *
- * @param nibble 4-bit value (0..15).
- * @return 12-bit SPI pattern encoding the nibble as WS2812 bits.
- */
-constexpr uint32_t _computeWS2812Pattern(uint8_t nibble)
-{
-    uint32_t bits = 0;
-    for (uint8_t bit = 0b1000; bit; bit >>= 1)
-    {
-        bits <<= BITS_PER_SIGNAL;
-        bits |= (nibble & bit) ? SIGNAL_HIGH : SIGNAL_LOW;
-    }
-    return bits;
-}
-
-/**
- * @brief Compile-time generated lookup table for WS2812 bit patterns.
- *
- * Maps 4-bit color nibbles (0..15) to their 32-bit SPI encodings.
- * Table is computed at compile time using constexpr.
- */
-constexpr uint32_t WS2812_LUT[16] = {
-    _computeWS2812Pattern(0x0),
-    _computeWS2812Pattern(0x1),
-    _computeWS2812Pattern(0x2),
-    _computeWS2812Pattern(0x3),
-    _computeWS2812Pattern(0x4),
-    _computeWS2812Pattern(0x5),
-    _computeWS2812Pattern(0x6),
-    _computeWS2812Pattern(0x7),
-    _computeWS2812Pattern(0x8),
-    _computeWS2812Pattern(0x9),
-    _computeWS2812Pattern(0xA),
-    _computeWS2812Pattern(0xB),
-    _computeWS2812Pattern(0xC),
-    _computeWS2812Pattern(0xD),
-    _computeWS2812Pattern(0xE),
-    _computeWS2812Pattern(0xF),
-};
 
 LED_SPI_CH32::LED_SPI_CH32(size_t numLEDs)
     : _numLEDs(numLEDs),
@@ -76,24 +35,32 @@ LED_SPI_CH32::LED_SPI_CH32(size_t numLEDs)
     RCC_AHBPeriphClockCmd(RCC_AHBPeriph_DMA1, ENABLE);
     DMA_Init(_DMAChannel, &_DMASettings);
 
+    // Enable interrupts on transfer complete
+    DMA_ITConfig(_DMAChannel, DMA_IT_TC, ENABLE);
+
     // Initialize the SPI peripheral
     SPI.beginTransaction(SPISettings(6000000, MSBFIRST, SPI_MODE0, SPI_TRANSMITONLY));
 
     // Set SPI to send DMA request when transmit buffer is empty
     SPI1->CTLR2 |= SPI_CTLR2_TXDMAEN;
 
+    // Set prescaler to 8 for 6MHz SPI clock (48MHz / 8 = 6MHz)
     SPI1->CTLR1 &= ~SPI_CTLR1_BR;           // Unset the Timing bits
-    SPI1->CTLR1 |= SPI_BaudRatePrescaler_8; // Set prescaler to 8 for 6MHz SPI clock (48MHz / 8 = 6MHz)
+    SPI1->CTLR1 |= SPI_BaudRatePrescaler_8; 
+
+    // Register this instance as the singleton for interrupt handler access
+    _instance = this;
 }
 
 void LED_SPI_CH32::send()
 {
     // Initialize DMASettings here so this helper owns the DMA configuration.
 
-    DMA1->INTFCR = 0xF00; // Clear the flags on channel 3 //Clear the completion flag to indicate a new transfer
     SPI_Cmd(SPI1, ENABLE);
     DMA_Init(_DMAChannel, &_DMASettings);
     DMA_Cmd(_DMAChannel, ENABLE);
+    DMA_ClearFlag(DMA1_IT_GL3);
+    _isBusy = true;
 }
 
 void LED_SPI_CH32::stop()
@@ -140,3 +107,50 @@ void LED_SPI_CH32::clear()
         setLED(i, 0, 0, 0);
     }
 }
+
+/**
+ * @brief Busy wait until the DMA1 Channel 3 interrupt flag is clear.
+ *
+ * Polls the DMA1 INTFR register to detect when the Transfer Complete
+ * interrupt flag has been cleared, typically by the interrupt handler.
+ * This is a blocking operation useful for synchronization.
+ *
+ * @return Number of loop iterations performed (for debugging/profiling).
+ */
+bool LED_SPI_CH32::busy()
+{
+    _isBusy &= (DMA_GetFlagStatus(DMA1_FLAG_TC3) == RESET);
+    return _isBusy;
+}
+
+/// Singleton instance pointer definition.
+LED_SPI_CH32* LED_SPI_CH32::_instance = nullptr;
+
+/**
+ * @brief DMA1 Channel 3 interrupt handler for WS2812 DMA transfer completion.
+ *
+ * Automatically restarts the DMA transfer when the previous transfer completes,
+ * enabling continuous LED refresh without software intervention.
+ */
+void DMA1_Channel3_IRQHandler(void)
+{
+    // Check if this is a Transfer Complete (TC) interrupt
+    if (DMA1->INTFR & DMA1_IT_TC3)
+    {
+        // Clear all interrupt flags on channel 3
+        DMA1->INTFCR = DMA1_IT_GL3; 
+
+        // Restart the DMA transfer if the singleton instance exists
+        if (LED_SPI_CH32::getInstance())
+        {
+            LED_SPI_CH32::getInstance()->send();
+        }
+    }
+}
+
+/* TODO:
+Fix IRQ
+Set up LUT to work with different singnal bit widths
+Break out processor specific settings into their own function
+Breake out LED type specific settings into their own function
+*/

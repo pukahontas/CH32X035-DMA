@@ -10,6 +10,7 @@
 #define SIGNAL_LOW 0b11000000
 #define SIGNAL_HIGH 0b11111000
 
+
 /**
  * @class LED_SPI_CH32
  * @brief WS2812 LED driver using SPI + DMA on CH32X035.
@@ -57,6 +58,16 @@ public:
      */
     void clear();
 
+    /**
+     * @fn static LED_SPI_CH32* getInstance()
+     * @brief Get the singleton instance for interrupt handler access.
+     *
+     * @return Pointer to the singleton instance.
+     */
+    static LED_SPI_CH32* getInstance() { return _instance; }
+    
+    bool busy();
+
 //private:
     const size_t _numLEDs;
     const size_t _LEDColorsSize;
@@ -68,7 +79,55 @@ public:
 
     uint8_t* _LEDColors;     ///< Dynamically allocated RGB color buffer.
     uint8_t* _DMABuffer;     ///< Dynamically allocated DMA/SPI bit pattern buffer.
+    bool _isBusy = false;
+
+    /// Singleton instance pointer for interrupt handler access.
+    static LED_SPI_CH32* _instance;
+};
+
+/**
+ * @brief Compile-time helper to convert a 4-bit nibble to WS2812 SPI bit pattern.
+ *
+ * @param nibble 4-bit value (0..15).
+ * @return 12-bit SPI pattern encoding the nibble as WS2812 bits.
+ */
+constexpr uint32_t _computeWS2812Pattern(uint8_t nibble)
+{
+    uint32_t bits = 0;
+    for (uint8_t bit = 0b1000; bit; bit >>= 1)
+    {
+        bits <<= BITS_PER_SIGNAL;
+        bits |= (nibble & bit) ? SIGNAL_HIGH : SIGNAL_LOW;
+    }
+    return bits;
+}
+
+/**
+ * @brief Compile-time generated lookup table for WS2812 bit patterns.
+ *
+ * Maps 4-bit color nibbles (0..15) to their 32-bit SPI encodings.
+ * Table is computed at compile time using constexpr.
+ */
+constexpr uint32_t WS2812_LUT[16] = {
+    _computeWS2812Pattern(0x0),
+    _computeWS2812Pattern(0x1),
+    _computeWS2812Pattern(0x2),
+    _computeWS2812Pattern(0x3),
+    _computeWS2812Pattern(0x4),
+    _computeWS2812Pattern(0x5),
+    _computeWS2812Pattern(0x6),
+    _computeWS2812Pattern(0x7),
+    _computeWS2812Pattern(0x8),
+    _computeWS2812Pattern(0x9),
+    _computeWS2812Pattern(0xA),
+    _computeWS2812Pattern(0xB),
+    _computeWS2812Pattern(0xC),
+    _computeWS2812Pattern(0xD),
+    _computeWS2812Pattern(0xE),
+    _computeWS2812Pattern(0xF),
 };
 
 #include "LEDSPI.cpp"
+
+
 
