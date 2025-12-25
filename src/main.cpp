@@ -7,18 +7,22 @@
 
 LED_SPI_CH32 LED_SPI(LED_NUM);
 
+uint32_t count = 0;
+float cnt = 0;
 void processTick()
 {
-    static uint8_t r, g, b;
     for (int i = 0; i < LED_NUM; i++)
     {
-        LED_SPI.setLED(i, (uint8_t)round((sin(2. * PI * (8. * r / 256.0 - .5 * i / LED_NUM)) + .8) * 1.0),
-                          (uint8_t)round((sin(2. * PI * (2. * g / 256.0 + 0.3 * i / LED_NUM)) + .8) * 1.0),
-                          (uint8_t)round((sin(2. * PI * (4. * b / 256.0 + .8 * i / LED_NUM)) + .8) * 1.0));
+        LED_SPI.setLED(i, (uint8_t)round((sin(2. * PI * (87. * cnt - .5 * i / LED_NUM)) + .8) * 4.0),
+                          (uint8_t)round((sin(2. * PI * (-21. * cnt + 0.3 * i / LED_NUM)) + .8) * 4.0),
+                          (uint8_t)round((sin(2. * PI * (43. * cnt + .8 * i / LED_NUM)) + .8) * 4.0));
+        //LED_SPI.setLED(i, (count >> i) & 1, 0, 0);
     }
-    r++;
-    g++;
-    b++;
+    count++;
+    
+    cnt += .0001;
+    if (cnt >= 1.)
+        cnt = 0.;
 }
 
 void setup()
@@ -27,7 +31,7 @@ void setup()
     HardwareTimer* timer = new HardwareTimer(TIM1);
     
     // Set overflow to 100 Hz (1000 ms / 10 ms = 100 Hz)
-    timer->setOverflow(100, HERTZ_FORMAT);
+    timer->setOverflow(30, HERTZ_FORMAT);
     
     // Attach the interrupt callback for update events
     timer->attachInterrupt(processTick);
@@ -49,7 +53,11 @@ void loop()
 {
 
     while (LED_SPI.busy())        ;
-    LED_SPI.send();
+    LED_SPI.sendColors();
+    //while (LED_SPI.busy())        ;
+    //LED_SPI.sendWait();
+    // delay for the rest timing of the lights
+    //delayMicroseconds(80);
 
     // Enable DMA1 Channel 3 interrupt in NVIC
     // if (r == 2550)

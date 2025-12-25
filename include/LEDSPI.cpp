@@ -1,12 +1,12 @@
 #include "LEDSPI.h"
 
-
-LED_SPI_CH32::LED_SPI_CH32(size_t numLEDs)
+LED_SPI_CH32::LED_SPI_CH32(size_t numLEDs, const LED_SPI_CH32_Settings &settings)
     : _numLEDs(numLEDs),
       _LEDColorsSize(numLEDs * 3),
       _DMABufferSize(numLEDs * 3 * BITS_PER_SIGNAL),
       _LEDColors(nullptr),
-      _DMABuffer(nullptr)
+      _DMAChannel(settings.dmaChannel),
+      _SPI(settings.spiInstance)
 {
     // Validate LED count
     if (_numLEDs > MAX_SUPPORTED_LEDS)
@@ -16,16 +16,36 @@ LED_SPI_CH32::LED_SPI_CH32(size_t numLEDs)
 
     // Allocate buffers dynamically
     _LEDColors = new uint8_t[_LEDColorsSize](); // Zero-initialized
-    _DMABuffer = new uint8_t[_DMABufferSize](); // Zero-initialized
 
-    // Initialize DMA channel3 (SPI peripheral channel) for writing to the SPI transmit buffer
-    // Initialize DMASettings here so this helper owns the DMA configuration.
-    _DMASettings.DMA_PeripheralBaseAddr = (uint32_t)&(SPI1->DATAR);
-    _DMASettings.DMA_MemoryBaseAddr = (uint32_t)_DMABuffer;
+    // Allocate multiple DMA buffers for temporal dithering
+    for (size_t i = 0; i < NUM_DMA_BUFFERS; i++)
+    {
+        _DMABuffer[i] = new uint8_t[_DMABufferSize](); // Zero-initialized
+    }
+
+    // Initialize DMA channel (SPI peripheral channel) for writing to the SPI transmit buffer
+    // Use the first buffer initially
+    _DMASettings.DMA_PeripheralBaseAddr = (uint32_t)&(settings.spiInstance->DATAR);
+    _DMASettings.DMA_MemoryBaseAddr = (uint32_t)_DMABuffer[_currentBufferIndex];
     _DMASettings.DMA_DIR = DMA_DIR_PeripheralDST;
     _DMASettings.DMA_BufferSize = _DMABufferSize;
     _DMASettings.DMA_PeripheralInc = DMA_PeripheralInc_Disable;
     _DMASettings.DMA_MemoryInc = DMA_MemoryInc_Enable;
+    _DMASettings.DMA_PeripheralDataSize = DMA_PeripheralDataSize_Byte;
+    _DMASettings.DMA_MemoryDataSize = DMA_MemoryDataSize_Byte;
+    _DMASettings.DMA_Mode = DMA_Mode_Normal;
+    _DMASettings.DMA_Priority = DMA_Priority_High;
+    _DMASettings.DMA_M2M = DMA_M2M_Disable;
+
+    // Initialize DMA channel (SPI peripheral channel) for writing to the SPI transmit buffer during the wait period
+    // Send a single zero byte repeatedly without incrementing
+    uint8_t* zeroByte = {};
+    _DMASettings.DMA_PeripheralBaseAddr = (uint32_t)&(settings.spiInstance->DATAR);
+    _DMASettings.DMA_MemoryBaseAddr = (uint32_t)zeroByte;
+    _DMASettings.DMA_DIR = DMA_DIR_PeripheralDST;
+    _DMASettings.DMA_BufferSize = WAIT_PERIOD_COUNT;
+    _DMASettings.DMA_PeripheralInc = DMA_PeripheralInc_Disable;
+    _DMASettings.DMA_MemoryInc = DMA_MemoryInc_Disable;
     _DMASettings.DMA_PeripheralDataSize = DMA_PeripheralDataSize_Byte;
     _DMASettings.DMA_MemoryDataSize = DMA_MemoryDataSize_Byte;
     _DMASettings.DMA_Mode = DMA_Mode_Normal;
@@ -38,21 +58,21 @@ LED_SPI_CH32::LED_SPI_CH32(size_t numLEDs)
     // Enable interrupts on transfer complete
     DMA_ITConfig(_DMAChannel, DMA_IT_TC, ENABLE);
 
-    // Initialize the SPI peripheral
-    SPI.beginTransaction(SPISettings(6000000, MSBFIRST, SPI_MODE0, SPI_TRANSMITONLY));
+    // Initialize the SPI peripheral with settings from the configuration object
+    SPI.beginTransaction(SPISettings(settings.spiClockHz, settings.spiDataOrder, settings.spiMode, SPI_TRANSMITONLY));
 
     // Set SPI to send DMA request when transmit buffer is empty
-    SPI1->CTLR2 |= SPI_CTLR2_TXDMAEN;
+    settings.spiInstance->CTLR2 |= SPI_CTLR2_TXDMAEN;
 
     // Set prescaler to 8 for 6MHz SPI clock (48MHz / 8 = 6MHz)
-    SPI1->CTLR1 &= ~SPI_CTLR1_BR;           // Unset the Timing bits
-    SPI1->CTLR1 |= SPI_BaudRatePrescaler_8; 
+    settings.spiInstance->CTLR1 &= ~SPI_CTLR1_BR; // Unset the Timing bits
+    settings.spiInstance->CTLR1 |= SPI_BaudRatePrescaler_8;
 
     // Register this instance as the singleton for interrupt handler access
     _instance = this;
 }
 
-void LED_SPI_CH32::send()
+void LED_SPI_CH32::sendColors()
 {
     // Initialize DMASettings here so this helper owns the DMA configuration.
 
@@ -61,6 +81,19 @@ void LED_SPI_CH32::send()
     DMA_Cmd(_DMAChannel, ENABLE);
     DMA_ClearFlag(DMA1_IT_GL3);
     _isBusy = true;
+    _isWaitPeriod = false;
+}
+
+void LED_SPI_CH32::sendWait()
+{
+    // Initialize DMASettings here so this helper owns the DMA configuration.
+
+    SPI_Cmd(SPI1, ENABLE);
+    DMA_Init(_DMAChannel, &_DMASettingsWaitPeriod);
+    DMA_Cmd(_DMAChannel, ENABLE);
+    DMA_ClearFlag(DMA1_IT_GL3);
+    _isBusy = true;
+    _isWaitPeriod = true;
 }
 
 void LED_SPI_CH32::stop()
@@ -69,7 +102,16 @@ void LED_SPI_CH32::stop()
 
 void LED_SPI_CH32::setLED(uint16_t index, uint8_t r, uint8_t g, uint8_t b)
 {
-    if (index >= _numLEDs)
+    // Use the current buffer index
+    for (size_t i = 0; i < NUM_DMA_BUFFERS; i++)
+    {
+        setLED(index, r, g, b, i);
+    }
+}
+
+void LED_SPI_CH32::setLED(uint16_t index, uint8_t r, uint8_t g, uint8_t b, uint8_t bufferIndex)
+{
+    if (index >= _numLEDs || bufferIndex >= NUM_DMA_BUFFERS)
         return;
 
     size_t offset = index * 3;
@@ -88,24 +130,45 @@ void LED_SPI_CH32::setLED(uint16_t index, uint8_t r, uint8_t g, uint8_t b)
         uint32_t bitPatternHigh = WS2812_LUT[(colorChannel >> 4) & 0x0F];
         uint32_t bitPatternLow = WS2812_LUT[colorChannel & 0x0F];
 
-        // Assign the 24 bits (3 bytes) of the WS2812 bit pattern for each color channel to the DMA buffer
+        // Assign the bit pattern for each color channel to the specified DMA buffer
+        size_t bufDmaIndex = dmaIndex;
         for (int i = 0; i < 4; i++)
         {
-            _DMABuffer[dmaIndex++] = (bitPatternHigh >> ((3 - i) * BITS_PER_SIGNAL)) & 0xFF;
+            _DMABuffer[bufferIndex][bufDmaIndex++] = (bitPatternHigh >> ((3 - i) * BITS_PER_SIGNAL)) & 0xFF;
         }
         for (int i = 0; i < 4; i++)
         {
-            _DMABuffer[dmaIndex++] = (bitPatternLow >> ((3 - i) * BITS_PER_SIGNAL)) & 0xFF;
+            _DMABuffer[bufferIndex][bufDmaIndex++] = (bitPatternLow >> ((3 - i) * BITS_PER_SIGNAL)) & 0xFF;
         }
     }
+}
+
+void LED_SPI_CH32::setLED(uint16_t index, float r, float g, float b)
+{
+    setLED(index, (uint8_t)(r * 255), (uint8_t)(g * 255), (uint8_t)(b * 255));
 }
 
 void LED_SPI_CH32::clear()
 {
     for (uint16_t i = 0; i < _numLEDs; i++)
     {
-        setLED(i, 0, 0, 0);
+        setLED(i, (uint8_t)0, (uint8_t)0, (uint8_t)0);
     }
+}
+
+/**
+ * @brief Swap to the next DMA buffer for temporal dithering.
+ *
+ * Cycles through available buffers (0 to NUM_DMA_BUFFERS-1) and updates
+ * the DMA settings to use the new buffer on the next transfer.
+ */
+void LED_SPI_CH32::swapDMABuffer()
+{
+    // Advance to the next buffer index (circular)
+    _currentBufferIndex = (_currentBufferIndex + 1) % NUM_DMA_BUFFERS;
+
+    // Update DMA settings to point to the new buffer
+    _DMASettings.DMA_MemoryBaseAddr = (uint32_t)_DMABuffer[_currentBufferIndex];
 }
 
 /**
@@ -123,8 +186,32 @@ bool LED_SPI_CH32::busy()
     return _isBusy;
 }
 
+/**
+ * @brief DMA1 Channel 3 interrupt handler for WS2812 DMA transfer completion.
+ *
+ * Automatically restarts the DMA transfer when the previous transfer completes,
+ * enabling continuous LED refresh without software intervention.
+ */
+void LED_SPI_CH32::interruptHandler()
+{
+    // Check if this is a Transfer Complete (TC) interrupt
+    if (DMA1->INTFR & DMA1_IT_TC3)
+    {
+        // Clear all interrupt flags on channel 3
+        DMA1->INTFCR = DMA1_IT_GL3;
+
+        // Restart the DMA transfer if the singleton instance exists
+        if (getInstance())
+        {
+            getInstance()->_isWaitPeriod ?
+                getInstance()->sendColors():
+                getInstance()->sendWait();
+        }
+    }
+}
+
 /// Singleton instance pointer definition.
-LED_SPI_CH32* LED_SPI_CH32::_instance = nullptr;
+LED_SPI_CH32 *LED_SPI_CH32::_instance = nullptr;
 
 /**
  * @brief DMA1 Channel 3 interrupt handler for WS2812 DMA transfer completion.
@@ -132,20 +219,10 @@ LED_SPI_CH32* LED_SPI_CH32::_instance = nullptr;
  * Automatically restarts the DMA transfer when the previous transfer completes,
  * enabling continuous LED refresh without software intervention.
  */
-void DMA1_Channel3_IRQHandler(void)
+// Global interrupt handler that delegates to the static method
+extern "C" void DMA1_Channel3_IRQHandler(void)
 {
-    // Check if this is a Transfer Complete (TC) interrupt
-    if (DMA1->INTFR & DMA1_IT_TC3)
-    {
-        // Clear all interrupt flags on channel 3
-        DMA1->INTFCR = DMA1_IT_GL3; 
-
-        // Restart the DMA transfer if the singleton instance exists
-        if (LED_SPI_CH32::getInstance())
-        {
-            LED_SPI_CH32::getInstance()->send();
-        }
-    }
+    LED_SPI_CH32::interruptHandler();
 }
 
 /* TODO:
