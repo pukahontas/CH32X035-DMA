@@ -48,8 +48,11 @@ void setup()
 void loop()
 {
 
-    while (LED_SPI.busy())        ;
-    LED_SPI.send();
+    while (LED_SPI.busy());
+    LED_SPI.sendColors();
+
+    while (LED_SPI.busy());
+    LED_SPI.sendWait();
 
     // Enable DMA1 Channel 3 interrupt in NVIC
     // if (r == 2550)
@@ -68,14 +71,13 @@ void loop()
         USBSerial.print(" ");
     }
 
-    return;
-
     printAddr(&SPI1->CTLR1, "CTLR1", BIN);
     printAddr(&SPI1->CTLR2, "CTLR2", BIN);
     printAddr(&SPI1->STATR, "STATR", BIN);
     // USBSerial.println(status, BIN);
     printAddr(&DMA1->INTFR, "DMA1->INTFR", BIN);
     printAddr(&DMA1_Channel3->MADDR, "Memory Addr", HEX);
+    printAddr((uint32_t*)(DMA1_Channel3->MADDR), "Memory Addr", HEX);
     USBSerial.println(LED_SPI._DMABuffer[0], HEX);
     printAddr(&DMA1_Channel3->CNTR, "Current Count", DEC);
     printAddr(&DMA1_Channel3->CFGR, "DMA1 CFGR", BIN);

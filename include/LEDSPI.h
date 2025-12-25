@@ -9,6 +9,7 @@
 #define BITS_PER_SIGNAL 8
 #define SIGNAL_LOW 0b11000000
 #define SIGNAL_HIGH 0b11111000
+#define WAIT_PERIOD_COUNT 38
 
 
 /**
@@ -30,10 +31,14 @@ public:
     explicit LED_SPI_CH32(size_t numLEDs);
 
     /**
-     * @fn void begin()
-     * @brief Start a DMA transfer of the LED color buffer.
+     * @fn void send()
+     * @brief Start a DMA transfer using the settings provided
      */
-    void send();
+    void send(DMA_InitTypeDef DMASettings);
+
+    void sendColors();
+
+    void sendWait();
 
     /**
      * @fn void stop()
@@ -76,9 +81,11 @@ public:
     DMA_Channel_TypeDef* _DMAChannel = DMA1_Channel3;
     SPI_TypeDef* _SPI = SPI1;
     DMA_InitTypeDef _DMASettings;
+    DMA_InitTypeDef _DMASettingsWaitPeriod;
 
     uint8_t* _LEDColors;     ///< Dynamically allocated RGB color buffer.
     uint8_t* _DMABuffer;     ///< Dynamically allocated DMA/SPI bit pattern buffer.
+    uint8_t* ZERO;
     bool _isBusy = false;
 
     /// Singleton instance pointer for interrupt handler access.

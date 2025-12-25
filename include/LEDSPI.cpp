@@ -17,6 +17,7 @@ LED_SPI_CH32::LED_SPI_CH32(size_t numLEDs)
     // Allocate buffers dynamically
     _LEDColors = new uint8_t[_LEDColorsSize](); // Zero-initialized
     _DMABuffer = new uint8_t[_DMABufferSize](); // Zero-initialized
+    ZERO = new uint8_t[1]();
 
     // Initialize DMA channel3 (SPI peripheral channel) for writing to the SPI transmit buffer
     // Initialize DMASettings here so this helper owns the DMA configuration.
@@ -32,8 +33,19 @@ LED_SPI_CH32::LED_SPI_CH32(size_t numLEDs)
     _DMASettings.DMA_Priority = DMA_Priority_High;
     _DMASettings.DMA_M2M = DMA_M2M_Disable;
 
+    _DMASettingsWaitPeriod.DMA_PeripheralBaseAddr = (uint32_t)&(SPI1->DATAR);
+    _DMASettingsWaitPeriod.DMA_MemoryBaseAddr = (uint32_t)ZERO;
+    _DMASettingsWaitPeriod.DMA_DIR = DMA_DIR_PeripheralDST;
+    _DMASettingsWaitPeriod.DMA_BufferSize = WAIT_PERIOD_COUNT;
+    _DMASettingsWaitPeriod.DMA_PeripheralInc = DMA_PeripheralInc_Disable;
+    _DMASettingsWaitPeriod.DMA_MemoryInc = DMA_MemoryInc_Disable;
+    _DMASettingsWaitPeriod.DMA_PeripheralDataSize = DMA_PeripheralDataSize_Byte;
+    _DMASettingsWaitPeriod.DMA_MemoryDataSize = DMA_MemoryDataSize_Byte;
+    _DMASettingsWaitPeriod.DMA_Mode = DMA_Mode_Normal;
+    _DMASettingsWaitPeriod.DMA_Priority = DMA_Priority_High;
+    _DMASettingsWaitPeriod.DMA_M2M = DMA_M2M_Disable;
+
     RCC_AHBPeriphClockCmd(RCC_AHBPeriph_DMA1, ENABLE);
-    DMA_Init(_DMAChannel, &_DMASettings);
 
     // Enable interrupts on transfer complete
     DMA_ITConfig(_DMAChannel, DMA_IT_TC, ENABLE);
@@ -52,15 +64,26 @@ LED_SPI_CH32::LED_SPI_CH32(size_t numLEDs)
     _instance = this;
 }
 
-void LED_SPI_CH32::send()
+void LED_SPI_CH32::send(DMA_InitTypeDef DMASettings)
 {
     // Initialize DMASettings here so this helper owns the DMA configuration.
 
     SPI_Cmd(SPI1, ENABLE);
-    DMA_Init(_DMAChannel, &_DMASettings);
+    DMA_Cmd(_DMAChannel, DISABLE);
+    DMA_Init(_DMAChannel, &DMASettings);
     DMA_Cmd(_DMAChannel, ENABLE);
     DMA_ClearFlag(DMA1_IT_GL3);
     _isBusy = true;
+}
+
+void LED_SPI_CH32::sendColors()
+{
+    send(_DMASettings);
+}
+
+void LED_SPI_CH32::sendWait()
+{
+    send(_DMASettingsWaitPeriod);
 }
 
 void LED_SPI_CH32::stop()
@@ -143,7 +166,7 @@ void DMA1_Channel3_IRQHandler(void)
         // Restart the DMA transfer if the singleton instance exists
         if (LED_SPI_CH32::getInstance())
         {
-            LED_SPI_CH32::getInstance()->send();
+            LED_SPI_CH32::getInstance()->sendColors();
         }
     }
 }
