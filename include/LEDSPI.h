@@ -10,6 +10,7 @@
 #define SIGNAL_LOW 0b11000000
 #define SIGNAL_HIGH 0b11111000
 #define WAIT_PERIOD_COUNT 10 // Delay to get to 50us wait time to send the reset signal. There is about 40us of overhead delay
+#define MAX_BRIGHTNESS 4
 
 
 /**
@@ -28,7 +29,7 @@ public:
      *
      * @param numLEDs Number of addressable LEDs to control (must be <= MAX_SUPPORTED_LEDS).
      */
-    explicit LED_SPI_CH32(size_t numLEDs);
+    explicit LED_SPI_CH32(size_t numLEDs, uint8_t ditherDepth = 0);
 
     /**
      * @fn void start()
@@ -51,7 +52,7 @@ public:
      * @param g Green component (0..255).
      * @param b Blue component (0..255).
      */
-    void setLED(uint16_t index, uint8_t r, uint8_t g, uint8_t b);
+    void setLED(uint16_t index, float r, float g, float b);
 
     /**
      * @fn void clear()
@@ -75,18 +76,20 @@ public:
     const size_t _numLEDs;
     const size_t _LEDColorsSize;
     const size_t _DMABufferSize;
+    const size_t _numDitherBuffers;
 
     DMA_Channel_TypeDef* _DMAChannel = DMA1_Channel3;
     SPI_TypeDef* _SPI = SPI1;
     DMA_InitTypeDef _DMASettings;
     DMA_InitTypeDef _DMASettingsWaitPeriod;
 
-    uint8_t* _LEDColors;     ///< Dynamically allocated RGB color buffer.
+    uint32_t* _LEDColors;     ///< Dynamically allocated RGB color buffer.
     uint8_t* _DMABuffer;     ///< Dynamically allocated DMA/SPI bit pattern buffer.
     uint8_t* ZERO;
     bool _start = false;
     bool _isBusy = false;
     bool _sendWait = false;
+    uint8_t _ditherCounter = 1;
 
     /// Singleton instance pointer for interrupt handler access.
     static LED_SPI_CH32* _instance;

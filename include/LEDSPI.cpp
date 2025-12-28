@@ -1,21 +1,22 @@
 #include "LEDSPI.h"
 
-LED_SPI_CH32::LED_SPI_CH32(size_t numLEDs)
+LED_SPI_CH32::LED_SPI_CH32(size_t numLEDs, uint8_t ditherDepth = 0)
     : _numLEDs(numLEDs),
       _LEDColorsSize(numLEDs * 3),
       _DMABufferSize(numLEDs * 3 * BITS_PER_SIGNAL),
       _LEDColors(nullptr),
-      _DMABuffer(nullptr)
+      _DMABuffer(nullptr),
+      _numDitherBuffers(ditherDepth + 1)
 {
-    // Validate LED count
+    // Validate inputs
     if (_numLEDs > MAX_SUPPORTED_LEDS)
     {
         return; // Failed validation; allocations will remain null
     }
 
     // Allocate buffers dynamically
-    _LEDColors = new uint8_t[_LEDColorsSize](); // Zero-initialized
-    _DMABuffer = new uint8_t[_DMABufferSize](); // Zero-initialized
+    _LEDColors = new uint32_t[_LEDColorsSize]();               // Zero-initialized
+    _DMABuffer = new uint8_t[_DMABufferSize * _numDitherBuffers](); // Zero-initialized
     ZERO = new uint8_t[1]();
 
     // Initialize DMA channel3 (SPI peripheral channel) for writing to the SPI transmit buffer
@@ -78,15 +79,27 @@ void LED_SPI_CH32::send(DMA_InitTypeDef DMASettings)
 
 void LED_SPI_CH32::sendColors()
 {
-    _sendWait = true;
-    send(_DMASettings);
+    // Select the buffer to sisplay based on temporal dithering
+    // The buffer selected should be the position of the highest set bit (LSB = 0)
+    // i.e. if currentBuffer = 5 = 0b0101, the buffer displayed is 2 because the highest bit set is 2^2. 
+    uint8_t currentBuffer = 0;
+    while (_ditherCounter >> (currentBuffer + 1)) currentBuffer++;
 
+    _DMASettings.DMA_MemoryBaseAddr = (uint32_t)(_DMABuffer + currentBuffer * _DMABufferSize);
+
+    // Increment ditherCounter and clamp it to the range 1..(2^numBuffers-1)
+    _ditherCounter++;
+    if (_ditherCounter >= (1 << _numDitherBuffers)) _ditherCounter = 1;
+
+
+    send(_DMASettings);
+    _sendWait = true;
 }
 
 void LED_SPI_CH32::sendWait()
 {
-    _sendWait = false;
     send(_DMASettingsWaitPeriod);
+    _sendWait = false;
 }
 
 void LED_SPI_CH32::start()
@@ -100,36 +113,51 @@ void LED_SPI_CH32::stop()
     _start = false;
 }
 
-void LED_SPI_CH32::setLED(uint16_t index, uint8_t r, uint8_t g, uint8_t b)
+void LED_SPI_CH32::setLED(uint16_t index, float r, float g, float b)
 {
     if (index >= _numLEDs)
         return;
 
     size_t offset = index * 3;
+
+    //_LEDColors[offset] = r;
+    //_LEDColors[offset + 1] = g;
+    //_LEDColors[offset + 2] = b;
+
     size_t dmaIndex = index * 3 * BITS_PER_SIGNAL;
 
-    _LEDColors[offset] = r;
-    _LEDColors[offset + 1] = g;
-    _LEDColors[offset + 2] = b;
-
-    for (char i = 0; i < 3; i++)
+    for (uint8_t i = 0; i < 3; i++)
     {
-        uint8_t colorChannel = (i == 0) ? g : (i == 1) ? r
-                                                       : b; // WS2812 uses GRB order
+        float colorChannel = (i == 0) ? g : (i == 1) ? r
+                                                     : b; // WS2812 uses GRB order
 
-        // Look up the WS2812 bit patterns for the high and low nibbles from the compile-time table
-        uint32_t bitPatternHigh = WS2812_LUT[(colorChannel >> 4) & 0x0F];
-        uint32_t bitPatternLow = WS2812_LUT[colorChannel & 0x0F];
+        uint8_t denominator = (1 << _numDitherBuffers) - 1; // 2^(numBuffers) - 1, the smallest representable fraction of an integer
+        uint8_t colorInteger = colorChannel * MAX_BRIGHTNESS;
+        uint8_t colorFractional = (colorChannel * MAX_BRIGHTNESS - colorInteger) * denominator + 0.5; // Round to nearest fractional part
 
-        // Assign the 24 bits (3 bytes) of the WS2812 bit pattern for each color channel to the DMA buffer
-        for (int i = 0; i < 4; i++)
+        _LEDColors[offset + i] = colorInteger;
+
+        for (size_t ditherBuffer = 0; ditherBuffer < _numDitherBuffers; ditherBuffer++)
         {
-            _DMABuffer[dmaIndex++] = (bitPatternHigh >> ((3 - i) * BITS_PER_SIGNAL)) & 0xFF;
+            uint8_t colorValue = colorInteger + (colorFractional & (1 << ditherBuffer) ? 1 : 0);
+
+            // Look up the WS2812 bit patterns for the high and low nibbles from the compile-time table
+            uint32_t bitPatternHigh = WS2812_LUT[(colorValue >> 4) & 0x0F];
+            uint32_t bitPatternLow = WS2812_LUT[colorValue & 0x0F];
+
+            _LEDColors[offset + i] = bitPatternLow;
+
+            // Assign the 24 bits (3 bytes) of the WS2812 bit pattern for each color channel to the DMA buffer
+            for (int i = 0; i < 4; i++)
+            {
+                _DMABuffer[dmaIndex + i + ditherBuffer * _DMABufferSize] = (bitPatternHigh >> ((3 - i) * BITS_PER_SIGNAL)) & 0xFF;
+            }
+            for (int i = 0; i < 4; i++)
+            {
+                _DMABuffer[dmaIndex + i + 4 + ditherBuffer * _DMABufferSize] = (bitPatternLow >> ((3 - i) * BITS_PER_SIGNAL)) & 0xFF;
+            }
         }
-        for (int i = 0; i < 4; i++)
-        {
-            _DMABuffer[dmaIndex++] = (bitPatternLow >> ((3 - i) * BITS_PER_SIGNAL)) & 0xFF;
-        }
+        dmaIndex += 8;
     }
 }
 
@@ -154,9 +182,12 @@ void LED_SPI_CH32::handleDMAInterrupt(void)
             return;
 
         // Restart the DMA transfer
-        if (!_sendWait) {
+        if (!_sendWait)
+        {
             sendColors();
-        } else {
+        }
+        else
+        {
             sendWait();
         }
     }
