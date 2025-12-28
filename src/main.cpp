@@ -1,7 +1,7 @@
 #include <Arduino.h>
 #include "LEDSPI.h"
 
-#define SERIAL_ENABLE
+//#define SERIAL_ENABLE
 #define LED_NUM 21
 
 #ifdef SERIAL_ENABLE

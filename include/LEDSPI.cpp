@@ -92,20 +92,21 @@ void LED_SPI_CH32::sendColors()
     if (_ditherCounter >= (1 << _numDitherBuffers)) _ditherCounter = 1;
 
 
-    send(_DMASettings);
     _sendWait = true;
+    send(_DMASettings);
 }
 
 void LED_SPI_CH32::sendWait()
 {
-    send(_DMASettingsWaitPeriod);
     _sendWait = false;
+    send(_DMASettingsWaitPeriod);
 }
 
 void LED_SPI_CH32::start()
 {
     _start = true;
     sendWait();
+    __NOP(); // Doesn't work without this line, not sure why????
 }
 
 void LED_SPI_CH32::stop()
