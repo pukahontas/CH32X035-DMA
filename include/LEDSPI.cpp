@@ -56,7 +56,7 @@ LED_SPI_CH32::LED_SPI_CH32(size_t numLEDs, const LED_SPI_CH32_Settings &settings
     DMA_Init(_DMAChannel, &_DMASettings);
 
     // Enable interrupts on transfer complete
-    DMA_ITConfig(_DMAChannel, DMA_IT_TC, ENABLE);
+    DMA_ITConfig(_DMAChannel, DMA_IT_TC, DISABLE);
 
     // Initialize the SPI peripheral with settings from the configuration object
     SPI.beginTransaction(SPISettings(settings.spiClockHz, settings.spiDataOrder, settings.spiMode, SPI_TRANSMITONLY));
@@ -194,6 +194,7 @@ bool LED_SPI_CH32::busy()
  */
 void LED_SPI_CH32::interruptHandler()
 {
+    return;
     // Check if this is a Transfer Complete (TC) interrupt
     if (DMA1->INTFR & DMA1_IT_TC3)
     {
