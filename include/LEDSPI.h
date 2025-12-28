@@ -9,7 +9,7 @@
 #define BITS_PER_SIGNAL 8
 #define SIGNAL_LOW 0b11000000
 #define SIGNAL_HIGH 0b11111000
-#define WAIT_PERIOD_COUNT 38
+#define WAIT_PERIOD_COUNT 10 // Delay to get to 50us wait time to send the reset signal. There is about 40us of overhead delay
 
 
 /**
@@ -55,6 +55,8 @@ public:
      */
     void clear();
 
+    void handleDMAInterrupt(void);
+
     /**
      * @fn static LED_SPI_CH32* getInstance()
      * @brief Get the singleton instance for interrupt handler access.
@@ -79,6 +81,7 @@ public:
     uint8_t* _DMABuffer;     ///< Dynamically allocated DMA/SPI bit pattern buffer.
     uint8_t* ZERO;
     bool _isBusy = false;
+    bool _sendWait = false;
 
     /// Singleton instance pointer for interrupt handler access.
     static LED_SPI_CH32* _instance;

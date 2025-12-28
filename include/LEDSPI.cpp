@@ -78,15 +78,19 @@ void LED_SPI_CH32::send(DMA_InitTypeDef DMASettings)
 
 void LED_SPI_CH32::sendColors()
 {
+    _sendWait = true;
     send(_DMASettings);
+
 }
 
 void LED_SPI_CH32::sendWait()
 {
+    _sendWait = false;
     send(_DMASettingsWaitPeriod);
 }
 
-void LED_SPI_CH32::start() {
+void LED_SPI_CH32::start()
+{
     sendColors();
 }
 
@@ -135,6 +139,23 @@ void LED_SPI_CH32::clear()
     }
 }
 
+void LED_SPI_CH32::handleDMAInterrupt(void)
+{
+    // Check if this is a Transfer Complete (TC) interrupt
+    if (DMA1->INTFR & DMA1_IT_TC3)
+    {
+        // Clear all interrupt flags on channel 3
+        DMA1->INTFCR = DMA1_IT_GL3;
+
+        // Restart the DMA transfer
+        if (!_sendWait) {
+            sendColors();
+        } else {
+            sendWait();
+        }
+    }
+}
+
 /**
  * @brief Busy wait until the DMA1 Channel 3 interrupt flag is clear.
  *
@@ -165,17 +186,9 @@ extern "C"
     void DMA1_Channel3_IRQHandler(void) __attribute__((interrupt("WCH-Interrupt-fast")));
     void DMA1_Channel3_IRQHandler(void)
     {
-        // Check if this is a Transfer Complete (TC) interrupt
-        if (DMA1->INTFR & DMA1_IT_TC3)
+        if (LED_SPI_CH32::getInstance())
         {
-            // Clear all interrupt flags on channel 3
-            DMA1->INTFCR = DMA1_IT_GL3;
-
-            // Restart the DMA transfer if the singleton instance exists
-            if (LED_SPI_CH32::getInstance())
-            {
-                LED_SPI_CH32::getInstance()->sendColors();
-            }
+            LED_SPI_CH32::getInstance()->handleDMAInterrupt();
         }
     }
 }

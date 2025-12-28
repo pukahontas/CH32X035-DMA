@@ -7,9 +7,22 @@
 
 LED_SPI_CH32 LED_SPI(LED_NUM);
 
-void processTick()
+void setup()
 {
-    static uint8_t r, g, b;
+    LED_SPI.start();
+
+#ifdef SERIAL_ENABLE
+    // Set up serial monitor
+    USBSerial.begin(128);
+    // if (!USBSerial.waitForPC(20))
+    //   USBSerial.end();
+    USBSerial.println("Starting up...");
+#endif
+}
+
+uint8_t r, g, b;
+void loop()
+{ 
     for (int i = 0; i < LED_NUM; i++)
     {
         LED_SPI.setLED(i, (uint8_t)round((sin(2. * PI * (8. * r / 256.0 - .5 * i / LED_NUM)) + .8) * 1.0),
@@ -19,44 +32,7 @@ void processTick()
     r++;
     g++;
     b++;
-}
-
-void setup()
-{
-    // Configure TIM3 to generate an interrupt every 10 ms (100 Hz)
-    HardwareTimer* timer = new HardwareTimer(TIM1);
-    
-    // Set overflow to 100 Hz (1000 ms / 10 ms = 100 Hz)
-    timer->setOverflow(100, HERTZ_FORMAT);
-    
-    // Attach the interrupt callback for update events
-    timer->attachInterrupt(processTick);
-    
-    // Start the timer
-    timer->resume();
-
-    LED_SPI.start();
-    // Set up serial monitor
-
-#ifdef SERIAL_ENABLE
-    USBSerial.begin(128);
-    // if (!USBSerial.waitForPC(20))
-    //   USBSerial.end();
-    USBSerial.println("Starting up...");
-#endif
-}
-
-void loop()
-{
-
-    /*while (LED_SPI.busy());
-    LED_SPI.sendColors();
-
-    while (LED_SPI.busy());
-    LED_SPI.sendWait();*/
-
-    // Enable DMA1 Channel 3 interrupt in NVIC
-    // if (r == 2550)
+    delay(10);
 
 #ifdef SERIAL_ENABLE
     for (size_t i = 0; i < LED_SPI._DMABufferSize; i++)
