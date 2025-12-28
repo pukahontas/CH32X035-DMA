@@ -30,15 +30,7 @@ public:
      */
     explicit LED_SPI_CH32(size_t numLEDs);
 
-    /**
-     * @fn void send()
-     * @brief Start a DMA transfer using the settings provided
-     */
-    void send(DMA_InitTypeDef DMASettings);
-
-    void sendColors();
-
-    void sendWait();
+    void start();
 
     /**
      * @fn void stop()
@@ -90,6 +82,16 @@ public:
 
     /// Singleton instance pointer for interrupt handler access.
     static LED_SPI_CH32* _instance;
+
+    /**
+     * @fn void send()
+     * @brief Start a DMA transfer using the settings provided
+     */
+    void send(DMA_InitTypeDef DMASettings);
+
+    void sendColors();
+
+    void sendWait();
 };
 
 /**

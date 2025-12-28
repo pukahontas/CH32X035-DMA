@@ -1,6 +1,5 @@
 #include "LEDSPI.h"
 
-
 LED_SPI_CH32::LED_SPI_CH32(size_t numLEDs)
     : _numLEDs(numLEDs),
       _LEDColorsSize(numLEDs * 3),
@@ -49,6 +48,7 @@ LED_SPI_CH32::LED_SPI_CH32(size_t numLEDs)
 
     // Enable interrupts on transfer complete
     DMA_ITConfig(_DMAChannel, DMA_IT_TC, ENABLE);
+    NVIC_EnableIRQ(DMA1_Channel3_IRQn);
 
     // Initialize the SPI peripheral
     SPI.beginTransaction(SPISettings(6000000, MSBFIRST, SPI_MODE0, SPI_TRANSMITONLY));
@@ -57,8 +57,8 @@ LED_SPI_CH32::LED_SPI_CH32(size_t numLEDs)
     SPI1->CTLR2 |= SPI_CTLR2_TXDMAEN;
 
     // Set prescaler to 8 for 6MHz SPI clock (48MHz / 8 = 6MHz)
-    SPI1->CTLR1 &= ~SPI_CTLR1_BR;           // Unset the Timing bits
-    SPI1->CTLR1 |= SPI_BaudRatePrescaler_8; 
+    SPI1->CTLR1 &= ~SPI_CTLR1_BR; // Unset the Timing bits
+    SPI1->CTLR1 |= SPI_BaudRatePrescaler_8;
 
     // Register this instance as the singleton for interrupt handler access
     _instance = this;
@@ -84,6 +84,10 @@ void LED_SPI_CH32::sendColors()
 void LED_SPI_CH32::sendWait()
 {
     send(_DMASettingsWaitPeriod);
+}
+
+void LED_SPI_CH32::start() {
+    sendColors();
 }
 
 void LED_SPI_CH32::stop()
@@ -147,7 +151,7 @@ bool LED_SPI_CH32::busy()
 }
 
 /// Singleton instance pointer definition.
-LED_SPI_CH32* LED_SPI_CH32::_instance = nullptr;
+LED_SPI_CH32 *LED_SPI_CH32::_instance = nullptr;
 
 /**
  * @brief DMA1 Channel 3 interrupt handler for WS2812 DMA transfer completion.
@@ -155,18 +159,23 @@ LED_SPI_CH32* LED_SPI_CH32::_instance = nullptr;
  * Automatically restarts the DMA transfer when the previous transfer completes,
  * enabling continuous LED refresh without software intervention.
  */
-void DMA1_Channel3_IRQHandler(void)
-{
-    // Check if this is a Transfer Complete (TC) interrupt
-    if (DMA1->INTFR & DMA1_IT_TC3)
-    {
-        // Clear all interrupt flags on channel 3
-        DMA1->INTFCR = DMA1_IT_GL3; 
 
-        // Restart the DMA transfer if the singleton instance exists
-        if (LED_SPI_CH32::getInstance())
+extern "C"
+{
+    void DMA1_Channel3_IRQHandler(void) __attribute__((interrupt("WCH-Interrupt-fast")));
+    void DMA1_Channel3_IRQHandler(void)
+    {
+        // Check if this is a Transfer Complete (TC) interrupt
+        if (DMA1->INTFR & DMA1_IT_TC3)
         {
-            LED_SPI_CH32::getInstance()->sendColors();
+            // Clear all interrupt flags on channel 3
+            DMA1->INTFCR = DMA1_IT_GL3;
+
+            // Restart the DMA transfer if the singleton instance exists
+            if (LED_SPI_CH32::getInstance())
+            {
+                LED_SPI_CH32::getInstance()->sendColors();
+            }
         }
     }
 }

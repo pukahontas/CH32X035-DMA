@@ -35,6 +35,7 @@ void setup()
     // Start the timer
     timer->resume();
 
+    LED_SPI.start();
     // Set up serial monitor
 
 #ifdef SERIAL_ENABLE
@@ -48,15 +49,14 @@ void setup()
 void loop()
 {
 
-    while (LED_SPI.busy());
+    /*while (LED_SPI.busy());
     LED_SPI.sendColors();
 
     while (LED_SPI.busy());
-    LED_SPI.sendWait();
+    LED_SPI.sendWait();*/
 
     // Enable DMA1 Channel 3 interrupt in NVIC
     // if (r == 2550)
-    //  NVIC_EnableIRQ(DMA1_Channel3_IRQn);
 
 #ifdef SERIAL_ENABLE
     for (size_t i = 0; i < LED_SPI._DMABufferSize; i++)
