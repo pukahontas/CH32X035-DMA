@@ -30,11 +30,15 @@ public:
      */
     explicit LED_SPI_CH32(size_t numLEDs);
 
+    /**
+     * @fn void start()
+     * @brief Start sending color data to the LEDs using DMA+SPI. DMA complete interrupts will restart the transaction indefinitely.
+     */
     void start();
 
     /**
      * @fn void stop()
-     * @brief Stop ongoing SPI/DMA transfers.
+     * @brief Stop ongoing SPI/DMA transfers. Not implemented.
      */
     void stop();
 
@@ -80,6 +84,7 @@ public:
     uint8_t* _LEDColors;     ///< Dynamically allocated RGB color buffer.
     uint8_t* _DMABuffer;     ///< Dynamically allocated DMA/SPI bit pattern buffer.
     uint8_t* ZERO;
+    bool _start = false;
     bool _isBusy = false;
     bool _sendWait = false;
 

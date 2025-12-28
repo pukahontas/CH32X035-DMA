@@ -91,11 +91,13 @@ void LED_SPI_CH32::sendWait()
 
 void LED_SPI_CH32::start()
 {
-    sendColors();
+    _start = true;
+    sendWait();
 }
 
 void LED_SPI_CH32::stop()
 {
+    _start = false;
 }
 
 void LED_SPI_CH32::setLED(uint16_t index, uint8_t r, uint8_t g, uint8_t b)
@@ -146,6 +148,10 @@ void LED_SPI_CH32::handleDMAInterrupt(void)
     {
         // Clear all interrupt flags on channel 3
         DMA1->INTFCR = DMA1_IT_GL3;
+
+        // If the instance has been stopped, don't restart
+        if (!_start)
+            return;
 
         // Restart the DMA transfer
         if (!_sendWait) {
