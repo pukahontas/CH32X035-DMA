@@ -221,10 +221,10 @@ LED_SPI_CH32 *LED_SPI_CH32::_instance = nullptr;
  * enabling continuous LED refresh without software intervention.
  */
 // Global interrupt handler that delegates to the static method
-extern "C" void DMA1_Channel3_IRQHandler(void)
+/*extern "C" void DMA1_Channel3_IRQHandler(void)
 {
     LED_SPI_CH32::interruptHandler();
-}
+}*/
 
 /* TODO:
 Fix IRQ
