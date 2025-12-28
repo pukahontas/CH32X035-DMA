@@ -11,7 +11,7 @@ LED_SPI_CH32::LED_SPI_CH32(size_t numLEDs, uint8_t ditherDepth = 0)
     // Validate inputs
     if (_numLEDs > MAX_SUPPORTED_LEDS)
     {
-        return; // Failed validation; allocations will remain null
+        //return; // Failed validation; allocations will remain null
     }
 
     // Allocate buffers dynamically
@@ -113,29 +113,34 @@ void LED_SPI_CH32::stop()
     _start = false;
 }
 
-void LED_SPI_CH32::setLED(uint16_t index, float r, float g, float b)
+void LED_SPI_CH32::setLED(uint16_t index, uint16_t r, uint16_t g, uint16_t b)
 {
     if (index >= _numLEDs)
         return;
 
     size_t offset = index * 3;
 
-    //_LEDColors[offset] = r;
-    //_LEDColors[offset + 1] = g;
-    //_LEDColors[offset + 2] = b;
-
     size_t dmaIndex = index * 3 * BITS_PER_SIGNAL;
 
     for (uint8_t i = 0; i < 3; i++)
     {
-        float colorChannel = (i == 0) ? g : (i == 1) ? r
+        uint16_t colorChannel = (i == 0) ? g : (i == 1) ? r
                                                      : b; // WS2812 uses GRB order
 
-        uint8_t denominator = (1 << _numDitherBuffers) - 1; // 2^(numBuffers) - 1, the smallest representable fraction of an integer
-        uint8_t colorInteger = colorChannel * MAX_BRIGHTNESS;
-        uint8_t colorFractional = (colorChannel * MAX_BRIGHTNESS - colorInteger) * denominator + 0.5; // Round to nearest fractional part
+        // Colors are represented in fixed point notation with the lowest COLOR_BIT_DEPTH bits representing the fractional part
+        // They are provided as an integer value from 0 to (2^COLOR_BIT_DEPTH - 1)
+        // This is considered to be a fraction from 0.0 - 1.0
+        const uint32_t FRACTION_MAX = (1 << COLOR_BIT_DEPTH) - 1;
+        uint32_t ditherBins = (1 << _numDitherBuffers) - 1; // 2^(numBuffers) - 1, the smallest representable fraction of an integer
 
-        _LEDColors[offset + i] = colorInteger;
+        // Return the integer part of the fixed point as an integral value
+        uint32_t colorInteger = colorChannel * MAX_BRIGHTNESS / FRACTION_MAX;
+        // Take the fractional part and determine which dither bin it belongs into
+        // Represented in fixed-point
+        uint32_t colorFractional = (colorChannel * MAX_BRIGHTNESS) % FRACTION_MAX * ditherBins;
+        // add 1 to the first fractional bit so that it rounds to the nearest integer when truncating, then truncate to an integer
+        colorFractional = (colorFractional + (1 << (COLOR_BIT_DEPTH - 1))) >> COLOR_BIT_DEPTH;
+        _LEDColors[offset + i] = colorInteger << 16 | colorFractional;
 
         for (size_t ditherBuffer = 0; ditherBuffer < _numDitherBuffers; ditherBuffer++)
         {
@@ -144,8 +149,6 @@ void LED_SPI_CH32::setLED(uint16_t index, float r, float g, float b)
             // Look up the WS2812 bit patterns for the high and low nibbles from the compile-time table
             uint32_t bitPatternHigh = WS2812_LUT[(colorValue >> 4) & 0x0F];
             uint32_t bitPatternLow = WS2812_LUT[colorValue & 0x0F];
-
-            _LEDColors[offset + i] = bitPatternLow;
 
             // Assign the 24 bits (3 bytes) of the WS2812 bit pattern for each color channel to the DMA buffer
             for (int i = 0; i < 4; i++)
@@ -161,11 +164,21 @@ void LED_SPI_CH32::setLED(uint16_t index, float r, float g, float b)
     }
 }
 
+void LED_SPI_CH32::setLEDf(uint16_t index, float r, float g, float b) {
+    const uint16_t MAX_VAL = (1 << COLOR_BIT_DEPTH) - 1;
+
+    // Clamp to range 0-1;
+    r = CLAMP(r, 0.0, 1.0);
+    g = CLAMP(g, 0.0, 1.0);
+    b = CLAMP(b, 0.0, 1.0);
+    return setLED(index, r * MAX_VAL, g * MAX_VAL, b * MAX_VAL);
+}
+
 void LED_SPI_CH32::clear()
 {
     for (uint16_t i = 0; i < _numLEDs; i++)
     {
-        setLED(i, 0, 0, 0);
+        setLED(i, (uint16_t)0, 0, 0);
     }
 }
 

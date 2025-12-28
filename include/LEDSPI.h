@@ -11,6 +11,9 @@
 #define SIGNAL_HIGH 0b11111000
 #define WAIT_PERIOD_COUNT 10 // Delay to get to 50us wait time to send the reset signal. There is about 40us of overhead delay
 #define MAX_BRIGHTNESS 4
+#define COLOR_BIT_DEPTH 8
+
+#define CLAMP(x, min, max) (x < min) ? min : (x > max) ? max : x
 
 
 /**
@@ -52,7 +55,18 @@ public:
      * @param g Green component (0..255).
      * @param b Blue component (0..255).
      */
-    void setLED(uint16_t index, float r, float g, float b);
+    void setLED(uint16_t index, uint16_t r, uint16_t g, uint16_t b);
+
+        /**
+     * @fn void setLED(uint16_t index, float r, float g, float b)
+     * @brief Set the color of an LED to an RGB value. Values are reprsented from 0 (off) to 1.0 (max brightness)
+     *
+     * @param index LED index (0 to numLEDs-1).
+     * @param r Red component (0.0 .. 1.0).
+     * @param g Green component (0.0 .. 1.0).
+     * @param b Blue component (0.0 .. 1.0).
+     */
+    void setLEDf(uint16_t index, float r, float g, float b);
 
     /**
      * @fn void clear()
