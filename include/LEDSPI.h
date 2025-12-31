@@ -15,6 +15,14 @@
 
 #define CLAMP(x, min, max) (x < min) ? min : (x > max) ? max : x
 
+struct LED_SPI_Settings {
+    uint16_t numLEDs;
+    uint16_t ditherDepth;
+    uint16_t maxBrightness;
+    DMA_Channel_TypeDef* DMAChannel;
+    SPI_TypeDef* SPI_Controller;
+
+};
 
 /**
  * @class LED_SPI_CH32
@@ -55,7 +63,7 @@ public:
      * @param g Green component (0..255).
      * @param b Blue component (0..255).
      */
-    void setLED(uint16_t index, uint16_t r, uint16_t g, uint16_t b);
+    void setLED(size_t index, int r, int g, int b);
 
         /**
      * @fn void setLED(uint16_t index, float r, float g, float b)
@@ -66,7 +74,7 @@ public:
      * @param g Green component (0.0 .. 1.0).
      * @param b Blue component (0.0 .. 1.0).
      */
-    void setLEDf(uint16_t index, float r, float g, float b);
+    void setLEDf(size_t index, float r, float g, float b);
 
     /**
      * @fn void clear()
@@ -94,8 +102,8 @@ public:
 
     DMA_Channel_TypeDef* _DMAChannel = DMA1_Channel3;
     SPI_TypeDef* _SPI = SPI1;
-    DMA_InitTypeDef _DMASettings;
-    DMA_InitTypeDef _DMASettingsWaitPeriod;
+    DMA_InitTypeDef _DMASettingsSendColorData;
+    DMA_InitTypeDef _DMASettingsSendWait;
 
     uint32_t* _LEDColors;     ///< Dynamically allocated RGB color buffer.
     uint8_t* _DMABuffer;     ///< Dynamically allocated DMA/SPI bit pattern buffer.

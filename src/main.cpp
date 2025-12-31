@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include "LEDSPI.h"
+#include "FixedPoint.cpp"
 
 //#define SERIAL_ENABLE
 #define LED_NUM 21
@@ -23,19 +24,21 @@ void setup()
 #endif
 }
 
-uint32_t t;
+int t;
 uint32_t lastTickTime = micros();
 void loop()
 {
     // Delay until 10 milliseconds have passed since the last draw call
-    while (micros() - lastTickTime < 10000) {}
+    while (micros() - lastTickTime < 20000) {}
     lastTickTime = micros();
 
     for (int i = 0; i < LED_NUM; i++)
     {
-        LED_SPI.setLEDf(i, (sin(2. * PI * (8. * t / 256.0 - .5 * i / LED_NUM)) + .8),
-                        (sin(2. * PI * (2. * t / 256.0 + 0.3 * i / LED_NUM)) + .8),
-                        (sin(2. * PI * (4. * t / 256.0 + .8 * i / LED_NUM)) + .8));
+
+        LED_SPI.setLED(i, 
+        sinFixed((8 * LED_NUM * t - (512 * i)) / LED_NUM) - 60,
+        sinFixed((2 * LED_NUM * t + (300 * i)) / LED_NUM) - 60,
+        sinFixed((4 * LED_NUM * t + (800 * i)) / LED_NUM) - 60);
     }
     t++;
 

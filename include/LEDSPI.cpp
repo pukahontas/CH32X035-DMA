@@ -1,12 +1,13 @@
 #include "LEDSPI.h"
+#include "debug.cpp"
 
 LED_SPI_CH32::LED_SPI_CH32(size_t numLEDs, uint8_t ditherDepth = 0)
     : _numLEDs(numLEDs),
       _LEDColorsSize(numLEDs * 3),
       _DMABufferSize(numLEDs * 3 * BITS_PER_SIGNAL),
+      _numDitherBuffers(ditherDepth + 1),
       _LEDColors(nullptr),
-      _DMABuffer(nullptr),
-      _numDitherBuffers(ditherDepth + 1)
+      _DMABuffer(nullptr)
 {
     // Validate inputs
     if (_numLEDs > MAX_SUPPORTED_LEDS)
@@ -21,29 +22,29 @@ LED_SPI_CH32::LED_SPI_CH32(size_t numLEDs, uint8_t ditherDepth = 0)
 
     // Initialize DMA channel3 (SPI peripheral channel) for writing to the SPI transmit buffer
     // Initialize DMASettings here so this helper owns the DMA configuration.
-    _DMASettings.DMA_PeripheralBaseAddr = (uint32_t)&(SPI1->DATAR);
-    _DMASettings.DMA_MemoryBaseAddr = (uint32_t)_DMABuffer;
-    _DMASettings.DMA_DIR = DMA_DIR_PeripheralDST;
-    _DMASettings.DMA_BufferSize = _DMABufferSize;
-    _DMASettings.DMA_PeripheralInc = DMA_PeripheralInc_Disable;
-    _DMASettings.DMA_MemoryInc = DMA_MemoryInc_Enable;
-    _DMASettings.DMA_PeripheralDataSize = DMA_PeripheralDataSize_Byte;
-    _DMASettings.DMA_MemoryDataSize = DMA_MemoryDataSize_Byte;
-    _DMASettings.DMA_Mode = DMA_Mode_Normal;
-    _DMASettings.DMA_Priority = DMA_Priority_High;
-    _DMASettings.DMA_M2M = DMA_M2M_Disable;
+    _DMASettingsSendColorData.DMA_PeripheralBaseAddr = (uint32_t)&(SPI1->DATAR);
+    _DMASettingsSendColorData.DMA_MemoryBaseAddr = (uint32_t)_DMABuffer;
+    _DMASettingsSendColorData.DMA_DIR = DMA_DIR_PeripheralDST;
+    _DMASettingsSendColorData.DMA_BufferSize = _DMABufferSize;
+    _DMASettingsSendColorData.DMA_PeripheralInc = DMA_PeripheralInc_Disable;
+    _DMASettingsSendColorData.DMA_MemoryInc = DMA_MemoryInc_Enable;
+    _DMASettingsSendColorData.DMA_PeripheralDataSize = DMA_PeripheralDataSize_Byte;
+    _DMASettingsSendColorData.DMA_MemoryDataSize = DMA_MemoryDataSize_Byte;
+    _DMASettingsSendColorData.DMA_Mode = DMA_Mode_Normal;
+    _DMASettingsSendColorData.DMA_Priority = DMA_Priority_High;
+    _DMASettingsSendColorData.DMA_M2M = DMA_M2M_Disable;
 
-    _DMASettingsWaitPeriod.DMA_PeripheralBaseAddr = (uint32_t)&(SPI1->DATAR);
-    _DMASettingsWaitPeriod.DMA_MemoryBaseAddr = (uint32_t)ZERO;
-    _DMASettingsWaitPeriod.DMA_DIR = DMA_DIR_PeripheralDST;
-    _DMASettingsWaitPeriod.DMA_BufferSize = WAIT_PERIOD_COUNT;
-    _DMASettingsWaitPeriod.DMA_PeripheralInc = DMA_PeripheralInc_Disable;
-    _DMASettingsWaitPeriod.DMA_MemoryInc = DMA_MemoryInc_Disable;
-    _DMASettingsWaitPeriod.DMA_PeripheralDataSize = DMA_PeripheralDataSize_Byte;
-    _DMASettingsWaitPeriod.DMA_MemoryDataSize = DMA_MemoryDataSize_Byte;
-    _DMASettingsWaitPeriod.DMA_Mode = DMA_Mode_Normal;
-    _DMASettingsWaitPeriod.DMA_Priority = DMA_Priority_High;
-    _DMASettingsWaitPeriod.DMA_M2M = DMA_M2M_Disable;
+    _DMASettingsSendWait.DMA_PeripheralBaseAddr = (uint32_t)&(SPI1->DATAR);
+    _DMASettingsSendWait.DMA_MemoryBaseAddr = (uint32_t)ZERO;
+    _DMASettingsSendWait.DMA_DIR = DMA_DIR_PeripheralDST;
+    _DMASettingsSendWait.DMA_BufferSize = WAIT_PERIOD_COUNT;
+    _DMASettingsSendWait.DMA_PeripheralInc = DMA_PeripheralInc_Disable;
+    _DMASettingsSendWait.DMA_MemoryInc = DMA_MemoryInc_Disable;
+    _DMASettingsSendWait.DMA_PeripheralDataSize = DMA_PeripheralDataSize_Byte;
+    _DMASettingsSendWait.DMA_MemoryDataSize = DMA_MemoryDataSize_Byte;
+    _DMASettingsSendWait.DMA_Mode = DMA_Mode_Normal;
+    _DMASettingsSendWait.DMA_Priority = DMA_Priority_High;
+    _DMASettingsSendWait.DMA_M2M = DMA_M2M_Disable;
 
     RCC_AHBPeriphClockCmd(RCC_AHBPeriph_DMA1, ENABLE);
 
@@ -85,7 +86,7 @@ void LED_SPI_CH32::sendColors()
     uint8_t currentBuffer = 0;
     while (_ditherCounter >> (currentBuffer + 1)) currentBuffer++;
 
-    _DMASettings.DMA_MemoryBaseAddr = (uint32_t)(_DMABuffer + currentBuffer * _DMABufferSize);
+    _DMASettingsSendColorData.DMA_MemoryBaseAddr = (uint32_t)(_DMABuffer + currentBuffer * _DMABufferSize);
 
     // Increment ditherCounter and clamp it to the range 1..(2^numBuffers-1)
     _ditherCounter++;
@@ -93,20 +94,20 @@ void LED_SPI_CH32::sendColors()
 
 
     _sendWait = true;
-    send(_DMASettings);
+    send(_DMASettingsSendColorData);
 }
 
 void LED_SPI_CH32::sendWait()
 {
     _sendWait = false;
-    send(_DMASettingsWaitPeriod);
+    send(_DMASettingsSendWait);
 }
 
 void LED_SPI_CH32::start()
 {
     _start = true;
     sendWait();
-    __NOP(); // Doesn't work without this line, not sure why????
+    __NOP(); // Doesn't work without this NOP, but why????
 }
 
 void LED_SPI_CH32::stop()
@@ -114,7 +115,7 @@ void LED_SPI_CH32::stop()
     _start = false;
 }
 
-void LED_SPI_CH32::setLED(uint16_t index, uint16_t r, uint16_t g, uint16_t b)
+void LED_SPI_CH32::setLED(size_t index, int r, int g, int b)
 {
     if (index >= _numLEDs)
         return;
@@ -125,14 +126,16 @@ void LED_SPI_CH32::setLED(uint16_t index, uint16_t r, uint16_t g, uint16_t b)
 
     for (uint8_t i = 0; i < 3; i++)
     {
-        uint16_t colorChannel = (i == 0) ? g : (i == 1) ? r
+        int colorChannel = (i == 0) ? g : (i == 1) ? r
                                                      : b; // WS2812 uses GRB order
 
         // Colors are represented in fixed point notation with the lowest COLOR_BIT_DEPTH bits representing the fractional part
         // They are provided as an integer value from 0 to (2^COLOR_BIT_DEPTH - 1)
         // This is considered to be a fraction from 0.0 - 1.0
-        const uint32_t FRACTION_MAX = (1 << COLOR_BIT_DEPTH) - 1;
+        const int FRACTION_MAX = (1 << COLOR_BIT_DEPTH) - 1;
         uint32_t ditherBins = (1 << _numDitherBuffers) - 1; // 2^(numBuffers) - 1, the smallest representable fraction of an integer
+
+        colorChannel = CLAMP(colorChannel, 0, FRACTION_MAX);
 
         // Return the integer part of the fixed point as an integral value
         uint32_t colorInteger = colorChannel * MAX_BRIGHTNESS / FRACTION_MAX;
@@ -165,7 +168,7 @@ void LED_SPI_CH32::setLED(uint16_t index, uint16_t r, uint16_t g, uint16_t b)
     }
 }
 
-void LED_SPI_CH32::setLEDf(uint16_t index, float r, float g, float b) {
+void LED_SPI_CH32::setLEDf(size_t index, float r, float g, float b) {
     const uint16_t MAX_VAL = (1 << COLOR_BIT_DEPTH) - 1;
 
     // Clamp to range 0-1;
