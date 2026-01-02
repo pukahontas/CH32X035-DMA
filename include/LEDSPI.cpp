@@ -1,5 +1,5 @@
 #include "LEDSPI.h"
-#include "debug.cpp"
+#include "FixedPoint.cpp"
 
 LED_SPI_CH32::LED_SPI_CH32(size_t numLEDs, uint8_t ditherDepth = 0)
     : _numLEDs(numLEDs),
@@ -115,7 +115,7 @@ void LED_SPI_CH32::stop()
     _start = false;
 }
 
-void LED_SPI_CH32::setLED(size_t index, int r, int g, int b)
+void LED_SPI_CH32::setLED(size_t index, Fixed8 r, Fixed8 g, Fixed8 b)
 {
     if (index >= _numLEDs)
         return;
@@ -126,13 +126,13 @@ void LED_SPI_CH32::setLED(size_t index, int r, int g, int b)
 
     for (uint8_t i = 0; i < 3; i++)
     {
-        int colorChannel = (i == 0) ? g : (i == 1) ? r
+        Fixed8 colorChannel = (i == 0) ? g : (i == 1) ? r
                                                      : b; // WS2812 uses GRB order
 
         // Colors are represented in fixed point notation with the lowest COLOR_BIT_DEPTH bits representing the fractional part
         // They are provided as an integer value from 0 to (2^COLOR_BIT_DEPTH - 1)
         // This is considered to be a fraction from 0.0 - 1.0
-        const int FRACTION_MAX = (1 << COLOR_BIT_DEPTH) - 1;
+        const int FRACTION_MAX = FP_FRACTION_MASK;
         uint32_t ditherBins = (1 << _numDitherBuffers) - 1; // 2^(numBuffers) - 1, the smallest representable fraction of an integer
 
         colorChannel = CLAMP(colorChannel, 0, FRACTION_MAX);

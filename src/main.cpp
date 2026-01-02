@@ -29,18 +29,24 @@ uint32_t lastTickTime = micros();
 void loop()
 {
     // Delay until 10 milliseconds have passed since the last draw call
-    while (micros() - lastTickTime < 20000) {}
+    while (micros() - lastTickTime < 10000) {}
     lastTickTime = micros();
 
     for (int i = 0; i < LED_NUM; i++)
-    {
+    {   
+        const Fixed8 R = 256 * LED_NUM;
+        const Fixed8 x = 256 * i;
+        const Fixed8 radiusR = sqrtFP(mult(R , R) - 2 * mult(x,  mult(R, sinFP(t * 15 / 256))) + mult(x, x));
+        const Fixed8 radiusG = sqrtFP(mult(R , R) - 2 * mult(x,  mult(R, sinFP(t * 16 / 256 + FP_2PI / 3))) + mult(x, x));
+        const Fixed8 radiusB = sqrtFP(mult(R , R) - 2 * mult(x,  mult(R, sinFP(t * 17 / 256 - FP_2PI / 3))) + mult(x, x));
 
         LED_SPI.setLED(i, 
-        sinFixed((8 * LED_NUM * t - (512 * i)) / LED_NUM) - 60,
-        sinFixed((2 * LED_NUM * t + (300 * i)) / LED_NUM) - 60,
-        sinFixed((4 * LED_NUM * t + (800 * i)) / LED_NUM) - 60);
+        sinFP(7 * t + radiusR * 54 / 256) + 120,
+        sinFP(3 * t + radiusG * 116 / 256) + 120,
+        sinFP(2 * t + radiusB * 73 / 256) + 120);
     }
     t++;
+
 
 #ifdef SERIAL_ENABLE
     USBSerial.println(micros() - lastTickTime);
