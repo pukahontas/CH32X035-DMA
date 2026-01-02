@@ -1,4 +1,5 @@
 #pragma once
+#include "debug.cpp"
 
 // Define signed fixed point type
 // 8 fixed fractional bits
@@ -113,14 +114,17 @@ Fixed8 sqrtFP(Fixed8 x)
 { 
     if (x < 0)
         x = -x; // Return the sqrt of the magnitude of the value
+
+    if (x == 0)
+        return 0;
     
-    Fixed8 xn = x / 2;
+    Fixed8 xn;
     // Choose a good starting guess based on highest bit set
-    if (x & 0xFF000000) {
-        xn = x >> 10;
-    } else if (x & 0xFF0000) {
+           if (x & 0xFF000000) {
+        xn = x >> 12;
+    } else if (x & 0x00FF0000) {
         xn = x >> 6;
-    } else if (x & 0xFF00) {
+    } else if (x & 0x0000FF00) {
         xn = x >> 2;
     } else {
         xn = x << 2;
@@ -129,24 +133,52 @@ Fixed8 sqrtFP(Fixed8 x)
     // If the input value is big enough it would overflow if we used the regular Newton's algorithm,
     //  use a slightly altered version, less-accurate version to keep it within a 32-bit int
 
-    if (x & (INT32_MAX - (INT32_MAX >> FP_FIXED_BITS))) // Check for overflow when multiplying
+    if (x & (INT32_MAX - (INT32_MAX >> 2))) 
     {
-        // If overflow, use a different algorithm
-        for (size_t i = 0; i < 6; i++)
+        // If the two highest bits are set, Newton's algorithm can overflow when adding to x
+        // Use the most conservative formula to prevent overflow
+        for (int i = 0; i < 6; i++)
         {
             // Newton's algorithm, taking into account the fixed point shift
             //  6 iterations are always enough with a good starting guess
-            int xn_2 = xn >> (FP_FIXED_BITS / 2);
+                            //USBSerial.println(xn);
+
+            xn = (xn / FP_FIXED_VAL + x / xn) * (FP_FIXED_VAL / 2);
+        
+        }
+    } else if (x & (INT32_MAX - (INT32_MAX >> (FP_FIXED_BITS - 1))))
+    {
+        // If one of the bits in the top 7-bits is set, it can overflow when multiplying by FP_FIXED_VAL / 2
+        // Use a modified formula to prevent overflow, this one divides xn 
+        for (int i = 0; i < 6; i++)
+        {
+            // Newton's algorithm, taking into account the fixed point shift
+            //  6 iterations are always enough with a good starting guess
+
+
+            Fixed8 xn_2 = xn >> (FP_FIXED_BITS / 2);
             xn = (xn_2 * xn_2 + x) / xn * (FP_FIXED_VAL / 2);
+        
         }
     }
-    else
-    {
-        for (size_t i = 0; i < 6; i++)
+    else if (x & (INT32_MAX - (INT32_MAX >> (FP_FIXED_BITS)))) {
+        // Slightly less accurate than the main formula, but because we multiply by FP_FIXED_VAL / 2
+        // Instead of FP_FIXED_VAL, we get one extra bit before overflow
+        // Only use this if the 8-th highest bit is set
+         for (int i = 0; i < 5; i++)
         {
             // Newton's algorithm, taking into account the fixed point shift
             // 6 iterations are always enough with a good starting guess
-            xn = (xn + x * FP_FIXED_VAL / xn) / 2;
+            xn = (xn + 1) / 2 + x * (FP_FIXED_VAL / 2) / xn;
+        }
+    } else
+    {
+        // Fastest and most accurate Newton's method formula, use this when there is no chance of overflow
+        for (int i = 0; i < 5; i++)
+        {
+            // Newton's algorithm, taking into account the fixed point shift
+            // 6 iterations are always enough with a good starting guess
+            xn = (xn + x * FP_FIXED_VAL / xn + 1) / 2;
         }
     }
 

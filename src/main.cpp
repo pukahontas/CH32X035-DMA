@@ -47,7 +47,6 @@ void loop()
     }
     t++;
 
-
 #ifdef SERIAL_ENABLE
     USBSerial.println(micros() - lastTickTime);
     return;
